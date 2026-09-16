@@ -142,7 +142,7 @@
     ],
     "layer": 1,
     "visible": false,
-    "texture": "textures/pyreact/white",
+    "texture": "textures/ui/white_bg",
     "color": [
       1,
       1,
