@@ -1,9 +1,9 @@
 ---
-name: pyreact-debug
+name: pyreact-debugging
 description: 调试运行在网易我的世界基岩版 ModSDK 中的 Pyreact-MC UI 框架。需要启动游戏、调整窗口尺寸测试 UI 适配、检查 UI 树、模拟交互、查看日志、定位渲染问题或分析性能时使用；必要时支持截取游戏窗口并供多模态模型读取。
 metadata:
   audience: agents
-  domain: pyreact-debug
+  domain: pyreact-debugging
   platform: netease-minecraft-bedrock-modsdk
 ---
 
@@ -101,7 +101,7 @@ Linux 游戏目录在脚本目录的 `config.py` 中通过 `LINUX_GAME_DIR` 配�
 
 ## 脚本参考
 
-所有脚本位于 `.agents/skills/pyreact-debug/scripts/`，用 `python3 <script>.py` 运行。详细参数见各脚本 `--help`。
+所有脚本位于 `.agents/skills/pyreact-debugging/scripts/`，用 `python3 <script>.py` 运行。详细参数见各脚本 `--help`。
 
 ### launch_game.py
 启动 Minecraft 游戏并附带后台常驻 log server。**启动前自动杀掉残留游戏/log_server 进程。**

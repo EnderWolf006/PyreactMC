@@ -344,7 +344,7 @@ def navigator_state():
 
 
 def dispatch_navigator(value):
-    """执行 pyreact-debug navigator 命令并返回即时接收状态。"""
+    """执行 pyreact-debugging navigator 命令并返回即时接收状态。"""
     from .navigator import navigator
 
     if not isinstance(value, dict):

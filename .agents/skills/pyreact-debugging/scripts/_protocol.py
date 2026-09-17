@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Shared clipboard request/response helpers for pyreact-debug scripts.
+"""Shared clipboard request/response helpers for pyreact-debugging scripts.
 
 Protocol:
   Request  (script -> game):  {"pyreact_debug": {"cmd": "...", "id": "...", "value": "...", "seq": N}}
