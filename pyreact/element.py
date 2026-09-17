@@ -7,6 +7,11 @@
 """
 
 
+def is_component(value):
+    """判断 ``value`` 是否为 ``@Component`` 装饰后的组件。"""
+    return callable(value) and getattr(value, "_is_pyreact_component", False)
+
+
 class Element(object):
     """虚拟 DOM 节点。
 
@@ -36,8 +41,7 @@ class Element(object):
 
     @property
     def is_component(self):
-        comp = self.comp_type
-        return callable(comp) and getattr(comp, "_is_pyreact_component", False)
+        return is_component(self.comp_type)
 
     def __repr__(self):
         name = getattr(self.comp_type, "__name__", repr(self.comp_type))
@@ -98,3 +102,25 @@ def create_element(comp_type, props=None, style=None, children=None,
         key=key,
         ref=ref,
     )
+
+
+def resolve_element(value):
+    """把「Element 或未调用的 ``@Component``」归一为 ``Element``。
+
+    - 已经是 ``Element`` 时原样返回，调用方拿到的始终是 Element；
+    - ``@Component`` 装饰的组件会以空 props 调用一次，取它返回的 ``Element``；
+    - 其他值返回 ``None``，由调用方决定报错方式。
+
+    组件返回的不是 ``Element`` 时抛出 ``TypeError``。
+    """
+    if isinstance(value, Element):
+        return value
+    if is_component(value):
+        element = value()
+        if not isinstance(element, Element):
+            raise TypeError(
+                "component %s must return a Pyreact Element, got %r"
+                % (getattr(value, "__name__", "<component>"), element)
+            )
+        return element
+    return None

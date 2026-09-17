@@ -2,7 +2,7 @@
 """自动注册 Screen 池的全局原生栈 navigator。"""
 import traceback
 
-from .element import Element
+from .element import resolve_element
 from . import host
 from . import native
 
@@ -185,7 +185,7 @@ class Navigator(object):
             element, key, on_result, on_error)
         if checked is None:
             return False
-        entry_key, result_callback = checked
+        element, entry_key, result_callback = checked
         self._transition = self._new_transition(
             _TransitionKind.push, on_complete, on_error)
         self._transition["element"] = element
@@ -223,7 +223,7 @@ class Navigator(object):
         checked = self._check_destination(element, key, None, on_error)
         if checked is None:
             return False
-        entry_key, result_callback = checked
+        element, entry_key, result_callback = checked
         self._transition = self._new_transition(
             _TransitionKind.replace, on_complete, on_error)
         self._transition.update({
@@ -281,7 +281,7 @@ class Navigator(object):
         checked = self._check_destination(element, key, None, on_error)
         if checked is None:
             return False
-        entry_key, result_callback = checked
+        element, entry_key, result_callback = checked
         self._transition = self._new_transition(
             _TransitionKind.reset, on_complete, on_error)
         self._transition.update({
@@ -338,10 +338,11 @@ class Navigator(object):
         return True
 
     def _check_destination(self, element, key, on_result, on_error):
-        if not isinstance(element, Element):
+        resolved = resolve_element(element)
+        if resolved is None:
             self._reject(
                 NavigationErrorCode.invalid_element,
-                "navigator destination must be a Pyreact Element",
+                "navigator destination must be a Pyreact Element or @Component",
                 on_error,
             )
             return None
@@ -359,7 +360,7 @@ class Navigator(object):
                 on_error,
             )
             return None
-        return (key, on_result)
+        return (resolved, key, on_result)
 
     @staticmethod
     def _check_callbacks(on_complete, on_error):

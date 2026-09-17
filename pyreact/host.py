@@ -15,6 +15,7 @@ from . import hooks
 from . import native
 from . import reconciler
 from . import layout as layout_mod
+from .element import resolve_element
 
 # 当前活跃宿主（modsdk 单线程，同一时刻只有一个 screen）
 _ACTIVE_HOST = [None]
@@ -703,7 +704,13 @@ class Root(object):
         self._host = host
 
     def render(self, path):
-        return _mount_element(self._component(), self._host, path)
+        element = resolve_element(self._component)
+        if element is None:
+            raise TypeError(
+                "create_root requires a Pyreact Element or @Component, got %r"
+                % (self._component,)
+            )
+        return _mount_element(element, self._host, path)
 
 
 def _mount_element(element, host, path):
@@ -735,7 +742,11 @@ def _mount_element(element, host, path):
 
 
 def create_root(component):
-    """创建渲染根。须在 ScreenNode.Create 中调用。"""
+    """创建渲染根。须在 ScreenNode.Create 中调用。
+
+    ``component`` 可以是未调用的 ``@Component`` 组件，也可以是已构造的
+    ``Element``（``Component()`` 或 Primitive 调用结果），两者等价。
+    """
     host = _ACTIVE_HOST[0]
     if host is None:
         raise RuntimeError("create_root called without an active PyreactScreenNode")
