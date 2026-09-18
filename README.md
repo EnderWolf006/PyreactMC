@@ -105,6 +105,9 @@ def UiInitFinished(self, args):
 
 ## 开发文档
 
+> Deepwiki AI 总结版实现原理/开发文档可参考，也可在此提问或接入 MCP
+> https://deepwiki.com/EnderWolf006/pyreactmc
+
 完整文档（术语、使用链路、navigator、Style 与 props、全部 Primitive / Composite
 参数表）已拆分到 **`pyreact-ui-building`** Agent Skill，作为人类的你也可以按需查阅：
 
@@ -133,8 +136,8 @@ pyreact.runtime_init(self, debug=True)
 
 本项目采用 [PyreactMC 自定义许可协议](LICENSE)，参考 Apache 2.0 的部分条款起草，**不是标准 Apache-2.0 开源许可**。[中文 NOTICE](NOTICE) 是许可条件的组成部分。使用前请阅读完整文本，尤其注意：
 
-- 在网易《我的世界》中使用时，必须在适用的服务器／存档加载界面及切换维度界面显示：**本项目使用 PyreactMC 客户端 UI 框架**。
+- 在网易《我的世界》中使用时，必须在开发者组件／服务器游戏的**作品详情介绍**中写明：**本项目使用 PyreactMC 客户端 UI 框架**（无需修改服务器／存档加载界面或切换维度界面）。
 - 相关开发者账户下**全部付费组件累计获取量 + 全部网络游戏累计获取量 ≥ 1,000,000 次**（包括不使用本框架的作品）时，未经原作者 EnderWolf006 本人事先书面授权，禁止使用本框架。
-- 不希望展示上述归属信息，或需偏离 NOTICE 规定的展示要求时，也须事先与原作者协商并取得书面授权；门槛授权与展示豁免相互独立。
+- 不希望标注上述归属信息，或需偏离 NOTICE 规定的归属陈述要求时，也须事先与原作者协商并取得书面授权；门槛授权与归属陈述豁免相互独立。
 
 统计口径、适用范围及协商方式见 [NOTICE](NOTICE)。再分发时须一并提供 LICENSE 和 NOTICE；原作者授权不替代网易或其他权利人的许可。
