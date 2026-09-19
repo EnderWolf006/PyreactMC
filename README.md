@@ -6,28 +6,26 @@ JsonUI / ModSDK 中偏底层的 UI 控件创建、布局、事件和状态管理
 
 ## 框架特性
 
-- 类 React 的函数式组件 + hooks + flexbox 布局开发体验，与 React Native 特性基本一致。
-- 类 React Native Yoga 的 基于 flexbox 的现代化自研布局引擎，轻松排出各种复杂的布局。
-- **因为像 RN，现代 Coding Agent 配合 skills 可以轻松使用 Pyreact-MC 编写调试游戏内 UI。**
-- 拥有 Virtual DOM diff 与 fiber 调和机制，只在提交阶段写变更的原生控件，性能极优。
-- 全局 `navigator` 页面栈与预注册Screen池，无需额外注册 JsonUI 也可直接用 push/HUD 显示UI。
-- 可以与原生 JsonUI 混合使用，支持将 Pyreact 组件挂载到已有 JsonUI 界面，作为子控件嵌入。
-- 动画与过渡：`Animated` + `Animation` + `Easing`；纯 visual 变更走快速路径优化，动画丝滑。
-- 支持 PC 窗口 resize 重布局 与 移动端异形屏安全区 `SafeArea` 组件；支持触屏、键鼠和手柄操控。
-- 内置 `use_event` / `use_custom_event` hooks，可在组件内监听 ModSDK 引擎事件与自定义事件。
-- 内置 `primitive` 封装大部分常用原生控件，如 `Label`、`Button`、`Image`、`ScrollView`、`Input` 等。
-- 内置 `composite` 封装 `primitive` 组合组件，如 `FilledButton`、`Modal`、`Animated`、 `Dropdown` 等。
-- 可通过 `primitive` 与 `composite` 组合出更复杂的自定义组件，可自己封装组件库进行复用。
+- **组件与状态**：函数式组件、hooks、Virtual DOM diff 与 Fiber 调和，在提交阶段更新原生控件。
+- **布局与适配**：自研 flexbox 布局引擎、PC 窗口尺寸变化重排、移动端 `SafeArea` 安全区。
+- **页面管理**：全局 `navigator` 页面栈与预注册 Screen 池，支持页面和 HUD，也可嵌入已有 JsonUI。
+- **动画**：`Animated`、`Animation` 和 `Easing`，纯视觉属性更新使用快速路径。
+- **事件与交互**：监听 ModSDK 引擎事件和自定义事件，支持触屏、键鼠和手柄交互。
+- **组件库**：`Label`、`Button`、`Input` 等 Primitive，以及 `FilledButton`、`Modal`、`Dropdown` 等 Composite。
+- **Agent 工具**：提供 UI 开发与 MCDK 调试 skills，支持界面检查、回归测试和多项目游戏实例管理。
 
 ## 项目结构
 
 - `pyreact/`：框架核心，部署时放到 `behavior/YourClientScript/pyreact`。
 - `jsonui/PyreactBase.json`：JsonUI 模板，部署时放入 `resource/ui` 并在 `_ui_defs.json` 注册。
-- `examples/`：示例组件（计数器、动画Demo、2048游戏Demo）。
+- `examples/`：计数器、动画和 2048 游戏示例。
 - `.agents/skills/pyreact-ui-building/`：开发使用 Pyreact 的 Agent Skill，[人类也可读](.agents/skills/pyreact-ui-building/references/architecture.md)。
 - `.agents/skills/pyreact-debugging/`：调试用 Agent Skill，可自动拉起游戏测试、读取日志与 UI 树、模拟交互、采样性能。
 
 ## 使用方法
+
+框架运行于网易《我的世界》基岩版 ModSDK 的游戏 Python 环境。本仓库提供框架源码与
+JsonUI 模板，需部署到已有 Addon 项目；下面的 `behavior` 和 `resource` 分别代表项目的行为包与资源包目录。
 
 ### 1. 部署框架
 
@@ -43,12 +41,18 @@ JsonUI / ModSDK 中偏底层的 UI 控件创建、布局、事件和状态管理
 # -*- coding: utf-8 -*-
 import mod.client.extraClientApi as clientApi
 from .pyreact import *
+
 ClientSystem = clientApi.GetClientSystemCls()
+
+
 class PyreactExampleClientSystem(ClientSystem):
     def __init__(self, namespace, systemName):
         ClientSystem.__init__(self, namespace, systemName)
-        runtime_init(self) # 在这里初始化
-        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'UiInitFinished', self, self.UiInitFinished)
+        runtime_init(self)
+        self.ListenForEvent(
+            clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(),
+            'UiInitFinished', self, self.UiInitFinished,
+        )
 ```
 
 ### 3. 编写组件并 push
@@ -57,9 +61,9 @@ class PyreactExampleClientSystem(ClientSystem):
 `Element`；`navigator.push` 会为每个页面创建独立的 ScreenNode、Fiber 与 Hooks 状态。
 
 ```python
-@Component # 函数式组件装饰器
+@Component
 def CounterDemo():
-    count, set_count = use_state(0) # hooks 状态，组件每次渲染都会保持不变
+    count, set_count = use_state(0)
 
     return SafeArea(
         style=Style(
@@ -83,7 +87,9 @@ def CounterDemo():
         ],
     )
 ```
-在 `UiInitFinished` 事件之后的合适时机 push 页面：
+
+在上面的客户端系统类中添加 `UiInitFinished` 方法，收到事件后打开页面：
+
 ```python
 def UiInitFinished(self, args):
     navigator.push(CounterDemo)
@@ -91,25 +97,24 @@ def UiInitFinished(self, args):
 
 ### 4. 挂载到已有 JsonUI 界面（可选）
 
-如需要把 Pyreact 挂到已有 JsonUI 的某个控件时，需要先在JsonUI文件把你要挂载的控件上继承rootBase，也就是`custom_root@PyreactBase.rootBase`。然后在自定义 `ScreenNode.Create`
-中调用 `pyreact.create_root(Component).render("/control/path")`
+先让目标 JsonUI 控件继承 `PyreactBase.rootBase`，例如 `custom_root@PyreactBase.rootBase`。
+然后在自定义 `ScreenNode.Create` 中调用 `pyreact.create_root(CounterDemo).render("/control/path")`。
 
 ### 说明与约定
 
 - 函数式组件函数名用大驼峰，props 与 `style` 的 key 用驼峰，其余代码遵循 PEP8。
 - 枚举禁止裸字符串，建议使用枚举类包装，如 `AlignItems.center`、`ButtonState.pressed`、`Display.none` 等。
 - 布局与通用属性放 `Style`，原生控件专属属性放 `props`，比如 `fontSize` 放到 `props`。
-- 当回调/闭包会延迟执行，而它引用的变量之后可能变化时，用 functools.partial 来固定值，不要依赖 lambda x=x: 这种默认参数技巧，容易引发机审误判。
+- 当回调或闭包引用的变量之后可能变化时，用 `functools.partial` 固定值；`lambda x=x:` 这类默认参数写法可能引发机审误判。
 - 含 `key=` / `ref=` 的源文件头部加 `# pylint: disable=unexpected-keyword-arg,E1123` 才可过机审。
-- `navigator.push` / `replace` / `reset` 与 `create_root` 都支持传入Element（调用函数式组件的值）或 `@Component` 装饰的函数式组件，需要传 props 时必须用带括号的写法。
+- `navigator.push` / `replace` / `reset` 与 `create_root` 支持传入 Element 或 `@Component` 装饰的函数式组件；需要传 props 时，先调用组件生成 Element。
 
 ## 开发文档
 
-> Deepwiki AI 总结版实现原理/开发文档可参考，也可在此提问或接入 MCP
-> https://deepwiki.com/EnderWolf006/pyreactmc
+[DeepWiki](https://deepwiki.com/EnderWolf006/pyreactmc) 提供 AI 生成的实现说明，可作为辅助参考。
 
 完整文档（术语、使用链路、navigator、Style 与 props、全部 Primitive / Composite
-参数表）已拆分到 **`pyreact-ui-building`** Agent Skill，作为人类的你也可以按需查阅：
+参数表）位于 [`pyreact-ui-building`](.agents/skills/pyreact-ui-building/SKILL.md)，可按需查阅：
 
 | 文档 | 内容 |
 | --- | --- |
@@ -124,13 +129,34 @@ def UiInitFinished(self, args):
 
 ## 调试
 
-**`pyreact-debugging`** Agent Skill 提供启动游戏、实时日志流、UI 树检查、交互模拟、
-窗口尺寸适配和 Tracy 函数级性能采样脚本。调试默认关闭（每帧零开销），需要时在首次
-初始化开启：
+[`pyreact-debugging`](.agents/skills/pyreact-debugging/SKILL.md) 基于
+[MCDevTool（MCDK）](https://github.com/GitHub-Zero123/MCDevTool)，调试工具运行在宿主 Python 3，
+游戏内执行的测试代码需兼容 Python 2。受管游戏实例和窗口操作目前面向 Windows，宿主需 Python 3.12 或更高版本。
+
+| 场景 | 能力与入口 |
+| --- | --- |
+| 启动与连接 | 测试世界、MCP 服务、就绪检查：[配置说明](.agents/skills/pyreact-debugging/references/setup.md) |
+| 多 agent / 多项目 | 独立实例、端口、世界、owner 路由与证据目录：[实例管理](.agents/skills/pyreact-debugging/references/instances.md) |
+| Pyreact UI | Fiber 树、props、布局、navigator、语义交互和断言：[UI 调试](.agents/skills/pyreact-debugging/references/pyreact.md) |
+| 游戏与原生 UI | JSON UI、真实键鼠输入、截图、日志、客户端 / 服务端执行和热重载：[运行时调试](.agents/skills/pyreact-debugging/references/runtime.md) |
+| 自动回归 | 诊断包、JSON 用例、结果断言、失败证据：[回归编排](.agents/skills/pyreact-debugging/references/workflows.md) |
+| 性能分析 | Python CPU / 内存、可选 Native CPU 采样与基线比较：[性能文档](.agents/skills/pyreact-debugging/references/performance.md) |
+
+首次使用无需预先配置 MCDK 或 MCP：按[安装与启动说明](.agents/skills/pyreact-debugging/references/setup.md)
+运行 `setup_mcdk.py --install --project <Addon目录>`，工具会在用户目录安装并校验官方固定版本。
+开发游戏需事先通过 MC Studio 下载。
+
+MCDK 通用调试不要求开启 Pyreact 调试。需要 Fiber 快照和框架交互时，在首次初始化开启：
 
 ```python
 pyreact.runtime_init(self, debug=True)
 ```
+
+多个 agent 可以并行调试各自的游戏实例；真实键鼠输入和窗口操作共享桌面，由工具串行协调。
+并行修改源码时使用独立 worktree 或项目副本。网易客户端的部分全局选项与缓存仍可能共享。
+
+`.mcdev.json` 包含本机游戏路径，已加入 Git 忽略规则。实例数据默认写入用户目录下的
+`.pyreact-debug/instances/`；游戏、MCDK 二进制、存档和诊断产物无需放入本仓库。
 
 ## 许可与归属
 
