@@ -19,7 +19,7 @@ def _next_name(key):
     _name_counter[0] += 1
     uid = _name_counter[0]
     if key is not None:
-        return native.sanitize_name(key) + ("__%d" % uid)
+        return (native.sanitize_name(key) or "__pyr") + ("__%d" % uid)
     return "__pyr_%d" % uid
 
 
@@ -126,6 +126,7 @@ def mount_fiber(fiber, native_parent_path, host):
 
 def _mount_component(fiber, native_parent_path, host):
     output = _render_component(fiber)
+    fiber.last_props = fiber.props
     output_list = _normalize_output(output)
     fiber.child_fibers = [create_fiber(e, host) for e in output_list]
     for cf in fiber.child_fibers:
@@ -171,12 +172,12 @@ def _render_component(fiber):
     """调用组件的渲染函数（带 hook 上下文）。"""
     fiber.hook_index = 0
     fiber.has_pending_effects = False
+    fiber.dirty = False
     hooks.push_fiber(fiber)
     try:
         output = fiber.comp_type._render(**fiber.props)
     finally:
         hooks.pop_fiber()
-    fiber.dirty = False
     return output
 
 
@@ -210,6 +211,10 @@ def _attach_ref(fiber, control):
 
 def update_fiber(fiber, element, host):
     """用新 element 更新已挂载的 fiber（同类型）。"""
+    ref_changed = fiber.ref is not element.ref
+    if ref_changed and fiber.is_primitive:
+        _attach_ref(fiber, None)
+    fiber.ref = element.ref
     fiber.element = element
     fiber.props = element.props
     fiber.style = element.style
@@ -219,6 +224,8 @@ def update_fiber(fiber, element, host):
         _update_component(fiber, host)
     else:
         _update_primitive(fiber, host)
+        if ref_changed:
+            _attach_ref(fiber, native.get_control(host, fiber.native_path))
 
 
 def _update_component(fiber, host):
@@ -282,13 +289,13 @@ def reconcile_children(fiber, next_elements, host):
         return
     prev_map = {}
     for i, cf in enumerate(prev):
-        k = cf.key if cf.key is not None else i
+        k = (True, cf.key) if cf.key is not None else (False, i)
         prev_map[k] = cf
 
     used = set()
     new_children = []
     for i, el in enumerate(next_elements):
-        k = el.key if el.key is not None else i
+        k = (True, el.key) if el.key is not None else (False, i)
         cf = prev_map.get(k)
         if cf is not None and cf not in used and _same_type(cf, el):
             used.add(cf)
@@ -367,11 +374,13 @@ def unmount_fiber(fiber, host, remove_native=True):
     会把一次 tab 切换放大成几十次昂贵的 SDK 路径/布局更新。这里仍递归
     执行 hooks、事件和 ref 清理，但由父 Primitive 负责一次原生删除。
     """
+    fiber._mounted = False
+    host._dirty.discard(fiber)
     if remove_native:
         host._commit_native_dirty = True
         host._commit_layout_dirty = True
     if fiber.is_component:
-        hooks.run_cleanup(fiber)
+        hooks.run_cleanup(fiber, recursive=False)
         for cf in fiber.child_fibers:
             unmount_fiber(cf, host, remove_native)
     else:
@@ -379,7 +388,7 @@ def unmount_fiber(fiber, host, remove_native=True):
         for cf in fiber.child_fibers:
             unmount_fiber(cf, host, False)
         # 移除自身原生控件
-        if remove_native:
+        if remove_native and fiber.native_path is not None:
             control = native.get_control(host, fiber.native_path)
             native.remove(host, control)
         fiber.comp_type.unmount(host, fiber)

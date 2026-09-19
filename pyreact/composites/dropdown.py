@@ -240,7 +240,7 @@ def _normalize_dropdown_options(options):
             value = option
             key = index
         normalized.append({
-            "id": "dropdown_option_" + str(key),
+            "id": "dropdown_option_" + (key if isinstance(key, basestring) else str(key)),
             "label": _dropdown_text(label),
             "value": value,
         })

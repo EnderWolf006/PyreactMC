@@ -6,6 +6,8 @@
 栈，hook 按调用顺序读写对应槽位，从而在多次渲染间保持状态。
 """
 
+import traceback
+
 # 渲染上下文栈
 _current_fiber_stack = []
 
@@ -100,19 +102,21 @@ def use_state(initial):
 
     def make_slot():
         value = initial() if callable(initial) else initial
-        return {"type": "state", "value": value}
+        slot = {"type": "state", "value": value}
+
+        def set_state(new_value):
+            if callable(new_value):
+                new_value = new_value(slot["value"])
+            if _state_value_equal(slot["value"], new_value):
+                return
+            slot["value"] = new_value
+            fiber.host.schedule_render(fiber)
+
+        slot["setter"] = set_state
+        return slot
 
     slot = _next_slot(fiber, make_slot)
-
-    def set_state(new_value):
-        if callable(new_value):
-            new_value = new_value(slot["value"])
-        if _state_value_equal(slot["value"], new_value):
-            return
-        slot["value"] = new_value
-        fiber.host.schedule_render(fiber)
-
-    return slot["value"], set_state
+    return slot["value"], slot["setter"]
 
 
 def use_ref(initial=None):
@@ -274,17 +278,7 @@ def _use_runtime_event(source, namespace, system_name, event_name, callback,
 
 def flush_effects(fiber):
     """提交后执行该 Fiber 上所有 dirty 的 effect（递归子 Fiber）。"""
-    if fiber.hooks:
-        for slot in fiber.hooks:
-            if slot.get("type") == "effect" and slot.get("dirty"):
-                if slot["cleanup"] is not None:
-                    try:
-                        slot["cleanup"]()
-                    except Exception:
-                        pass
-                cleanup = slot["effect"]()
-                slot["cleanup"] = cleanup if callable(cleanup) else None
-                slot["dirty"] = False
+    _flush_fiber_effects(fiber)
     for child in fiber.child_fibers:
         flush_effects(child)
 
@@ -296,21 +290,32 @@ def flush_pending_effects(host):
     for fiber in pending:
         if not fiber._mounted:
             continue
-        if fiber.hooks:
-            for slot in fiber.hooks:
-                if slot.get("type") == "effect" and slot.get("dirty"):
-                    if slot["cleanup"] is not None:
-                        try:
-                            slot["cleanup"]()
-                        except Exception:
-                            pass
-                    cleanup = slot["effect"]()
-                    slot["cleanup"] = cleanup if callable(cleanup) else None
-                    slot["dirty"] = False
+        _flush_fiber_effects(fiber)
         fiber.has_pending_effects = False
 
 
-def run_cleanup(fiber):
+def _flush_fiber_effects(fiber):
+    for slot in fiber.hooks:
+        if slot.get("type") != "effect" or not slot.get("dirty"):
+            continue
+        # Clear before calling user code: errors must neither replay an old
+        # cleanup nor discard unrelated pending subscriptions.
+        slot["dirty"] = False
+        cleanup = slot["cleanup"]
+        slot["cleanup"] = None
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception:
+                traceback.print_exc()
+        try:
+            cleanup = slot["effect"]()
+            slot["cleanup"] = cleanup if callable(cleanup) else None
+        except Exception:
+            traceback.print_exc()
+
+
+def run_cleanup(fiber, recursive=True):
     """卸载时运行所有 effect 的清理函数（递归子 Fiber）。"""
     pending = getattr(fiber.host, "_pending_effects", None)
     if pending is not None:
@@ -325,5 +330,6 @@ def run_cleanup(fiber):
                 slot["cleanup"] = None
             elif slot.get("type") == "animation_frame":
                 fiber.host.pyreact_unregister_animation_frame(slot)
-    for child in fiber.child_fibers:
-        run_cleanup(child)
+    if recursive:
+        for child in fiber.child_fibers:
+            run_cleanup(child)

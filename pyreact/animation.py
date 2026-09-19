@@ -5,6 +5,7 @@
 Pyreact 现有的 reconcile、layout / visual commit 流程提交。
 """
 import time
+import math
 
 from .style import (
     Style,
@@ -478,6 +479,6 @@ def _non_negative_float(value, name):
         result = float(value)
     except (TypeError, ValueError):
         raise TypeError("%s must be a number" % name)
-    if result < 0.0:
-        raise ValueError("%s must be >= 0" % name)
+    if math.isnan(result) or math.isinf(result) or result < 0.0:
+        raise ValueError("%s must be finite and >= 0" % name)
     return result

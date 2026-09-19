@@ -45,6 +45,8 @@ def Toggle(style=None, value=_UNSET, defaultValue=False, onChange=None,
     toggle_style = Style(width=30, height=16).merge(style)
     if disabled:
         own_opacity = toggle_style.get("opacity", 1.0)
+        if own_opacity is None:
+            own_opacity = 1.0
         toggle_style = toggle_style.merge(Style(
             opacity=own_opacity * _TOGGLE_DISABLED_OPACITY,
         ))

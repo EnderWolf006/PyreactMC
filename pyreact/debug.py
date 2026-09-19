@@ -53,7 +53,7 @@ def _sanitize(value):
     函数 -> '<function>'，Color 对象 -> {r,g,b,a}，dict/list 递归，
     其余 repr 截断兜底（避免函数/对象 props 破坏 JSON 序列化）。
     """
-    if value is None or isinstance(value, (bool, int, float, basestring)):
+    if value is None or isinstance(value, (bool, int, long, float, basestring)):
         return value
     if callable(value):
         return "<function>"
@@ -110,10 +110,11 @@ def serialize_fiber(fiber, layout_map):
         return None
     nid = fiber.native_name or fiber.native_path
     if not nid:
-        nid = "<%s>" % _type_name(fiber)
+        nid = "<%s:%s>" % (_type_name(fiber), id(fiber))
     out = {
         "id": nid,
         "type": _type_name(fiber),
+        "key": _sanitize(fiber.key),
         "props": _sanitize_dict(fiber.props),
         "style": _style_to_dict(fiber.style),
         "children": [],

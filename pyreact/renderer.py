@@ -329,10 +329,8 @@ def _style_opacity_value(style):
 
 
 def _color_alpha(fiber):
-    color = fiber.props.get("color") if fiber.props else None
-    if color is None:
-        color = fiber.last_props.get("color") if fiber.last_props else None
-    if isinstance(color, Color):
+    color = to_color(fiber.props.get("color") if fiber.props else None)
+    if color is not None:
         return color.a
     return 1.0
 

@@ -20,8 +20,8 @@ def SafeArea(style=None, children=None):
         安全区 inset 相加；其他布局和视觉字段保持不变。
     :param children: 单个组件，或组件列表/元组。
 
-    探针尚未完成首次布局时暂以零 inset 渲染；测量完成后只重渲染当前
-    SafeArea。容器已位于安全矩形内或嵌套在另一个 SafeArea 中时不会重复添加
+    探针尚未完成首次布局时暂以零 inset 渲染；测量完成及窗口变化后只重渲染
+    订阅的 SafeArea。容器已位于安全矩形内或嵌套在另一个 SafeArea 中时不会重复添加
     padding。inset 使用 Pyreact/JsonUI 设计坐标，不是设备物理像素。
     """
     if style is not None and not isinstance(style, Style):

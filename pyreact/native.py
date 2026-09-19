@@ -47,7 +47,7 @@ def sanitize_name(name):
     if name is None:
         return None
     cleaned = []
-    for ch in str(name):
+    for ch in (name if isinstance(name, basestring) else str(name)):
         if ("a" <= ch <= "z") or ("A" <= ch <= "Z") or ("0" <= ch <= "9") or ch == "_":
             cleaned.append(ch)
         else:
@@ -99,7 +99,16 @@ def clone(host, template_path, parent_path, name):
     使用 ``forceUpdate=False``，避免 SDK 在当前帧或下一帧隐式刷新，刷新由
     Pyreact 的提交边界统一控制。
     """
+    template_path = _host_template_path(host, template_path)
     return host.Clone(template_path, parent_path, name, False, False)
+
+
+def _host_template_path(host, path):
+    """Templates live under the actual rootBase, including manual roots."""
+    root = getattr(host, "_root_path", ROOT_PATH).rstrip("/")
+    if path.startswith(ROOT_PATH + "/"):
+        return root + path[len(ROOT_PATH):]
+    return path
 
 
 def remove(host, control):
@@ -195,7 +204,7 @@ def measure_text(host, text, font_scale=None, line_padding=None,
         布局。若为 None 或 <= 0，量测单行尺寸（不限制宽度）。
     :return: (width, height) 像素尺寸。
     """
-    ctrl = get_control(host, MEASURE_LABEL_PATH)
+    ctrl = get_control(host, _host_template_path(host, MEASURE_LABEL_PATH))
     if ctrl is None:
         return (0.0, 0.0)
     label = ctrl.asLabel()

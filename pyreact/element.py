@@ -87,7 +87,7 @@ def normalize_children(children):
 def _wrap_text(value):
     """把字符串/数字包成 Label 元素（RN 风格的文本子节点）。"""
     from .primitives import Label
-    return Label(content=str(value))
+    return Label(content=value if isinstance(value, basestring) else str(value))
 
 
 def create_element(comp_type, props=None, style=None, children=None,

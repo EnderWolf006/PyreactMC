@@ -4,7 +4,7 @@
 
 from ..component import Component
 from ..constants import AlignItems, FlexDirection
-from ..element import normalize_children
+from ..element import Element, normalize_children
 from ..primitives import Label, Panel, ScrollView
 from ..style import Style
 
@@ -47,7 +47,7 @@ def ListView(style=None, contentContainerStyle=None, data=None,
         row_index = 0
         for index, item in enumerate(data_list):
             if renderItem is None:
-                element = Label(content=str(item))
+                element = Label(content=item if isinstance(item, basestring) else str(item))
             else:
                 element = renderItem(item, index)
 
@@ -55,16 +55,19 @@ def ListView(style=None, contentContainerStyle=None, data=None,
             normalized = normalize_children(element)
             if not normalized:
                 continue
-            element = normalized[0]
             if keyExtractor is not None:
                 key = keyExtractor(item, index)
             elif isinstance(item, dict) and item.get("id") is not None:
                 key = item.get("id")
             else:
                 key = str(index)
-            if hasattr(element, "key"):
-                # 分行前写入稳定 key，避免列数变化时错误复用同位置 Fiber。
-                element.key = key
+            if len(normalized) == 1:
+                source = normalized[0]
+                # Element belongs to the caller and may be reused elsewhere.
+                element = Element(source.comp_type, source.props, source.style,
+                                  source.children, key, source.ref)
+            else:
+                element = _ListItem(key=key, children=normalized)
             if numColumns is not None and int(numColumns) > 1:
                 row.append(element)
                 if len(row) >= int(numColumns):
@@ -102,3 +105,9 @@ def _list_row(row_children, row_index, column_wrapper_style):
         style=column_wrapper_style,
         children=row_children,
     )
+
+
+@Component
+def _ListItem(children=None):
+    """Keep a multi-element item keyed without adding a native layout box."""
+    return children

@@ -7,6 +7,7 @@
   调用后返回 Element。子类实现 ``apply_props`` 把原生属性应用到控件。
 """
 from functools import partial
+import math
 
 from . import native
 from .constants import (
@@ -40,6 +41,9 @@ def _apply_color_alpha(control, fiber, color):
             return
         control.SetAlpha(final_alpha)
         fiber.primitive_state["_native_color_alpha"] = final_alpha
+        applied = fiber.primitive_state.get("_layout_applied")
+        if applied is not None:
+            fiber.primitive_state["_layout_applied"] = applied[:4] + (final_alpha,)
 
 
 _IMAGE_FRAME_FIELDS = frozenset(("src", "uv", "uvSize"))
@@ -274,9 +278,9 @@ class LabelPrimitive(Primitive):
         # 行间距：必须在 SetText 之前设置，SDK 才会在 syncSize/换行时计入行高
         line_padding = next_props.get("linePadding")
         line_padding_changed = _prop_changed(prev_props, next_props, "linePadding")
-        if line_padding is not None and line_padding_changed:
+        if line_padding_changed:
             try:
-                label.SetTextLinePadding(float(line_padding))
+                label.SetTextLinePadding(float(line_padding) if line_padding is not None else 0.0)
             except (TypeError, ValueError):
                 pass
         # 字号
@@ -289,32 +293,33 @@ class LabelPrimitive(Primitive):
         # 文本对齐
         text_alignment = next_props.get("textAlign")
         text_alignment_changed = _prop_changed(prev_props, next_props, "textAlign")
-        if text_alignment is not None and text_alignment_changed:
-            label.SetTextAlignment(text_alignment)
+        if text_alignment_changed:
+            label.SetTextAlignment(text_alignment if text_alignment is not None else "left")
         # 阴影
         shadow = next_props.get("shadow")
         shadow_changed = _prop_changed(prev_props, next_props, "shadow")
         if shadow is True and shadow_changed:
             label.EnableTextShadow()
-        elif shadow is False and shadow_changed:
+        elif shadow_changed:
             # 模板默认即为 false；显式关闭
             label.DisableTextShadow()
         # 颜色
         color = next_props.get("color")
-        color_obj = _to_color_obj(color)
-        if color_obj is not None and _prop_changed(prev_props, next_props, "color"):
+        color_obj = _to_color_obj(color) or Color(1.0, 1.0, 1.0)
+        if _prop_changed(prev_props, next_props, "color"):
             label.SetTextColor(color_obj.to_rgb_tuple())
             _apply_color_alpha(control, fiber, color_obj)
         # 文本内容最后设置；尺寸由 Pyreact 布局引擎的独立量测控件负责。
         content = next_props.get("content")
         typography_changed = (line_padding_changed or font_size_changed or
                               text_alignment_changed or shadow_changed)
-        if content is not None and (
-                typography_changed or _prop_changed(prev_props, next_props, "content")):
+        if typography_changed or _prop_changed(prev_props, next_props, "content"):
             # SDK 的 SetText 期望 utf-8 str；若拿到 unicode 则编码回 str
-            text = content
+            text = "" if content is None else content
             if isinstance(text, unicode):
                 text = text.encode("utf-8")
+            elif not isinstance(text, str):
+                text = str(text)
             # 布局引擎会通过独立量测控件计算文本尺寸；避免每个 Label
             # 在提交期间同步调整原生文本框尺寸。
             label.SetText(text, False)
@@ -385,12 +390,11 @@ class ImagePrimitive(Primitive):
         restore_static = bool(
             prev_props is not None and prev_props.get("frames") and not frames)
         src = next_props.get("src")
-        if src is not None and (
-                restore_static or _prop_changed(prev_props, next_props, "src")):
-            image.SetSprite(src)
+        if restore_static or _prop_changed(prev_props, next_props, "src"):
+            image.SetSprite(src if src is not None else native.WHITE_TEXTURE)
         color = next_props.get("color")
-        color_obj = _to_color_obj(color)
-        if color_obj is not None and _prop_changed(prev_props, next_props, "color"):
+        color_obj = _to_color_obj(color) or Color(1.0, 1.0, 1.0)
+        if _prop_changed(prev_props, next_props, "color"):
             image.SetSpriteColor(color_obj.to_rgb_tuple())
             _apply_color_alpha(control, fiber, color_obj)
         uv = next_props.get("uv")
@@ -408,19 +412,19 @@ class ImagePrimitive(Primitive):
             image.SetRotatePivot((float(rotate_pivot[0]), float(rotate_pivot[1])))
         # 旋转角度：Rotate 是相对增量，用 fiber state 记录上次角度，设增量
         rotate_angle = next_props.get("rotate")
-        if rotate_angle is not None and _prop_changed(prev_props, next_props, "rotate"):
-            target = float(rotate_angle)
+        if _prop_changed(prev_props, next_props, "rotate"):
+            target = float(rotate_angle) if rotate_angle is not None else 0.0
             last = fiber.primitive_state.get("rotate", 0.0)
             image.Rotate(target - last)
             fiber.primitive_state["rotate"] = target
         # 灰度
         grayscale = next_props.get("grayscale")
-        if grayscale is not None and _prop_changed(prev_props, next_props, "grayscale"):
+        if _prop_changed(prev_props, next_props, "grayscale"):
             image.SetSpriteGray(bool(grayscale))
         # 裁剪比例（进度条等），clipDirection 由模板/JSON 决定
         clip_ratio = next_props.get("clipRatio")
-        if clip_ratio is not None and _prop_changed(prev_props, next_props, "clipRatio"):
-            image.SetSpriteClipRatio(float(clip_ratio))
+        if _prop_changed(prev_props, next_props, "clipRatio"):
+            image.SetSpriteClipRatio(float(clip_ratio) if clip_ratio is not None else 0.0)
         # 图片适配方式（九宫格等）。nineSliceData 仅九宫模式需要：左、右、上、下
         adaption_type = next_props.get("imageAdaption")
         if adaption_type is not None and (
@@ -450,8 +454,9 @@ class ImagePrimitive(Primitive):
             frame_duration = float(next_props.get("frameDuration", 0.1))
         except (TypeError, ValueError):
             raise TypeError("Image.frameDuration must be a number")
-        if frame_duration <= 0.0:
-            raise ValueError("Image.frameDuration must be greater than 0")
+        if (math.isnan(frame_duration) or math.isinf(frame_duration) or
+                frame_duration <= 0.0):
+            raise ValueError("Image.frameDuration must be finite and greater than 0")
 
         initial_frame = next_props.get("initialFrame", 0)
         if (isinstance(initial_frame, bool) or
@@ -1322,6 +1327,11 @@ class ScrollViewPrimitive(Primitive):
             children = None
         return bool(children)
 
+    def unmount(self, host, fiber):
+        cache = getattr(self, "_scroll_path_cache", None)
+        if cache is not None:
+            cache.pop(fiber.native_path, None)
+
 
 class ButtonPrimitive(Primitive):
     """按钮 Primitive。
@@ -1395,7 +1405,7 @@ class ButtonPrimitive(Primitive):
                     effective_src = src
                     if effective_src is None and color is not None:
                         effective_src = native.WHITE_TEXTURE
-                    color_tuple = color.to_rgb_tuple() if color is not None else None
+                    color_tuple = color.to_rgb_tuple() if color is not None else (1.0, 1.0, 1.0)
                     state_alpha = color.a if color is not None else 1.0
                     state_data = ("image", state_alpha, effective_src, color_tuple)
                     state_key = "state_" + state
@@ -1407,8 +1417,7 @@ class ButtonPrimitive(Primitive):
                             image.SetSprite(src)
                         elif color is not None:
                             image.SetSprite(native.WHITE_TEXTURE)
-                        if color is not None:
-                            image.SetSpriteColor(color_tuple)
+                        image.SetSpriteColor(color_tuple)
                     inherited = fiber.primitive_state.get(
                         "_inherited_opacity", 1.0)
                     state_ctrl.SetAlpha(inherited * state_alpha)
@@ -1427,6 +1436,21 @@ class ButtonPrimitive(Primitive):
                     # TODO: 复杂态子组件挂载（v2）。v1 仅支持单 Image 复用，
                     # 以覆盖绝大多数纯色/贴图按钮场景。
                     fiber.primitive_state[state_key] = state_data
+
+        elif prev_props is not None and prev_props.get("buttonBuilder") is not None:
+            textures = ("button_borderless_light", "button_borderless_lighthover",
+                        "button_borderless_lightpressed")
+            for state, texture in zip(self.STATE_NAMES, textures):
+                state_ctrl = native.get_control(host, native.join_path(fiber.native_path, state))
+                if state_ctrl is not None:
+                    image = state_ctrl.asImage()
+                    if image is not None:
+                        image.SetSprite("textures/ui/" + texture)
+                        image.SetSpriteColor((1.0, 1.0, 1.0))
+                    alpha = fiber.primitive_state.get("_inherited_opacity", 1.0)
+                    state_ctrl.SetAlpha(alpha)
+                    fiber.primitive_state["_state_layout_alpha_" + state] = alpha
+                fiber.primitive_state.pop("state_" + state, None)
 
         # 注册点击回调（仅 touch up = click；三态视觉由原生自动切换）
         if prev_props is None:

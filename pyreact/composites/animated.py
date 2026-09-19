@@ -4,6 +4,7 @@
 from ..animation import (
     Animation, Easing, _AnimatedTimeline, merge_styles, styles_equal,
     without_style_fields,
+    _non_negative_float,
 )
 from ..component import Component
 from ..constants import Display
@@ -163,12 +164,4 @@ def _start_exit(timeline, animation):
 
 
 def _animated_duration(value):
-    if isinstance(value, bool):
-        raise TypeError("Animated duration must be a number")
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        raise TypeError("Animated duration must be a number")
-    if result < 0.0:
-        raise ValueError("Animated duration must be >= 0")
-    return result
+    return _non_negative_float(value, "Animated duration")

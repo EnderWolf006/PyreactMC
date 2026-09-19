@@ -264,7 +264,7 @@ class PyreactScreenNode(native.ScreenNode):
     def _pyreact_flush(self):
         if (not self._dirty and not self._needs_layout and
                 not self._commit_native_dirty and
-                not self._commit_layout_dirty):
+                not self._commit_layout_dirty and not self._pending_effects):
             return
         pending_native_dirty = self._commit_native_dirty
         pending_layout_dirty = self._commit_layout_dirty
@@ -274,8 +274,18 @@ class PyreactScreenNode(native.ScreenNode):
         if self._dirty:
             dirty = self._dirty
             self._dirty = set()
-            for fiber in dirty:
-                if fiber._mounted and fiber.is_component and fiber.host is self:
+            def depth(fiber):
+                value = 0
+                while fiber.parent_fiber is not None:
+                    value += 1
+                    fiber = fiber.parent_fiber
+                return value
+
+            # A parent's reconciliation may consume a child's state update.
+            # Visit ancestors first and skip already-rendered descendants.
+            for fiber in sorted(dirty, key=depth):
+                if (fiber.dirty and fiber._mounted and fiber.is_component
+                        and fiber.host is self):
                     try:
                         reconciler.rerender_component(fiber, self)
                     except Exception:
@@ -319,6 +329,9 @@ class PyreactScreenNode(native.ScreenNode):
 
     # ---- dirty 调度 ----
     def schedule_render(self, fiber):
+        if not fiber._mounted and fiber not in hooks._current_fiber_stack:
+            return
+        fiber.dirty = True
         self._dirty.add(fiber)
 
     # ---- 函数式组件事件监听 ----
@@ -500,6 +513,8 @@ class PyreactScreenNode(native.ScreenNode):
             bound = getattr(self, method_name)
             self._process_default(bound, screen_name)
         except Exception:
+            if method_name in self.__class__.__dict__:
+                delattr(self.__class__, method_name)
             return
 
         self._input_edit_handler_method_name = method_name
@@ -516,6 +531,8 @@ class PyreactScreenNode(native.ScreenNode):
                 self._process_default_unregister(bound, screen_name)
             except Exception:
                 pass
+        if method_name and method_name in self.__class__.__dict__:
+            delattr(self.__class__, method_name)
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
 
@@ -651,6 +668,8 @@ class PyreactScreenNode(native.ScreenNode):
             bound = getattr(self, method_name)
             self._process_default(bound, screen_name)
         except Exception:
+            if method_name in self.__class__.__dict__:
+                delattr(self.__class__, method_name)
             return
 
         self._slider_handler_method_name = method_name
@@ -667,6 +686,8 @@ class PyreactScreenNode(native.ScreenNode):
                 self._process_default_unregister(bound, screen_name)
             except Exception:
                 pass
+        if method_name and method_name in self.__class__.__dict__:
+            delattr(self.__class__, method_name)
         self._slider_bound = False
         self._slider_handler_method_name = None
 
@@ -715,6 +736,11 @@ class Root(object):
 
 def _mount_element(element, host, path):
     """把一个已构造的 Element 直接挂载到指定宿主路径。"""
+    root_fiber = None
+    if host._root_fiber is not None:
+        reconciler.unmount_fiber(host._root_fiber, host)
+        host._root_fiber = None
+    host._debug_layout_nodes = None
     host._root_path = path
     try:
         root_fiber = reconciler.create_fiber(element, host)
@@ -738,6 +764,13 @@ def _mount_element(element, host, path):
         return True
     except Exception:
         traceback.print_exc()
+        if root_fiber is not None:
+            try:
+                reconciler.unmount_fiber(root_fiber, host)
+                native.update_screen(host, True)
+            except Exception:
+                traceback.print_exc()
+        host._root_fiber = None
         return False
 
 
@@ -764,14 +797,14 @@ def get_safe_area_insets():
 
 
 def _publish_safe_area(size, insets):
-    """缓存唯一一次探针结果，并唤醒所有等待中的 SafeArea。"""
+    """发布有效测量，并通知已挂载的 SafeArea。"""
     previous = _SAFE_AREA_INSETS[0]
+    previous_size = _SAFE_AREA_SIZE[0]
     _SAFE_AREA_SIZE[0] = size
     _SAFE_AREA_INSETS[0] = insets
-    if previous == insets:
+    if previous == insets and previous_size == size:
         return
     listeners = tuple(_SAFE_AREA_LISTENERS)
-    del _SAFE_AREA_LISTENERS[:]
     for listener in listeners:
         try:
             listener(insets)
@@ -780,14 +813,13 @@ def _publish_safe_area(size, insets):
 
 
 def _subscribe_safe_area(listener):
-    """等待首次有效安全区结果，返回取消等待函数。"""
+    """订阅首次测量及窗口变化后的更新，返回取消订阅函数。"""
     if not callable(listener):
         raise TypeError("safe area listener must be callable")
     current = _SAFE_AREA_INSETS[0]
+    _SAFE_AREA_LISTENERS.append(listener)
     if current is not None:
         listener(current)
-    else:
-        _SAFE_AREA_LISTENERS.append(listener)
 
     def cleanup():
         for index, current_listener in enumerate(_SAFE_AREA_LISTENERS):
@@ -898,6 +930,8 @@ def _listen_runtime_event(namespace, system_name, event_name, listener,
 
 def notify_screen_size_changed():
     """响应 ScreenSizeChangedClientEvent，安排当前宿主重排。"""
+    # The probe's next Update reads the new native geometry, after resize.
+    _SAFE_AREA_INSETS[0] = None
     host = _ACTIVE_HOST[0]
     if host is not None:
         host.schedule_layout()

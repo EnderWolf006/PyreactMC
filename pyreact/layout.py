@@ -93,6 +93,13 @@ class LayoutNode(object):
 
 def build_layout_tree(root_fiber):
     """从根 fiber 构建 LayoutNode 列表（根可能渲染出多个 primitive）。"""
+    if root_fiber.is_primitive:
+        node = LayoutNode(root_fiber)
+        node.inherited_opacity = _style_opacity(root_fiber)
+        node.children = _collect(root_fiber, 1.0)
+        for child in node.children:
+            child.parent = node
+        return [node]
     return _collect(root_fiber, 1.0)
 
 
@@ -283,6 +290,8 @@ def _resolve_gap(style, column):
 
 def _has_unmeasured_text(node):
     """是否存在“有文本内容但尚未量测出尺寸”的叶子（需等屏幕渲染后重试）。"""
+    if node.display_none:
+        return False
     if not node.children:
         props = node.fiber.last_props
         content = props.get("content") if props else None
@@ -297,6 +306,8 @@ def _has_unmeasured_text(node):
 
 def _needs_post_measure(node):
     """判断原生刷新后是否可能改变本树的自适应尺寸。"""
+    if node.display_none:
+        return False
     if not node.children:
         props = node.fiber.last_props or {}
         content = props.get("content")
@@ -319,6 +330,9 @@ def _needs_post_measure(node):
 
 def measure(node, host, snapshot=False):
     """后序量测，填充 measured_w/h。None 表示该轴依赖父级（无法自底向上确定）。"""
+    if node.display_none:
+        node.measured_w = node.measured_h = 0.0
+        return False
     children_changed = False
     for child in node.children:
         if measure(child, host, snapshot):
@@ -1174,43 +1188,43 @@ def _update_content_size(node):
 def _apply_main_min_max(style, main_base, main_size, column):
     """对主轴尺寸应用 min/max 约束。"""
     if style is None:
-        return main_base
+        return max(0.0, main_base)
     if column:
         min_v = style.get("minHeight")
         max_v = style.get("maxHeight")
     else:
         min_v = style.get("minWidth")
         max_v = style.get("maxWidth")
-    if min_v is not None:
-        mn, explicit = _parse_dimension(min_v, main_size, 0.0)
-        if explicit and main_base < mn:
-            main_base = mn
     if max_v is not None:
         mx, explicit = _parse_dimension(max_v, main_size, 0.0)
         if explicit and main_base > mx:
             main_base = mx
-    return main_base
+    if min_v is not None:
+        mn, explicit = _parse_dimension(min_v, main_size, 0.0)
+        if explicit and main_base < mn:
+            main_base = mn
+    return max(0.0, main_base)
 
 
 def _apply_cross_min_max(style, cross_base, cross_size, column):
     """对交叉轴尺寸应用 min/max 约束。"""
     if style is None:
-        return cross_base
+        return max(0.0, cross_base)
     if column:
         min_v = style.get("minWidth")
         max_v = style.get("maxWidth")
     else:
         min_v = style.get("minHeight")
         max_v = style.get("maxHeight")
-    if min_v is not None:
-        mn, explicit = _parse_dimension(min_v, cross_size, 0.0)
-        if explicit and cross_base < mn:
-            cross_base = mn
     if max_v is not None:
         mx, explicit = _parse_dimension(max_v, cross_size, 0.0)
         if explicit and cross_base > mx:
             cross_base = mx
-    return cross_base
+    if min_v is not None:
+        mn, explicit = _parse_dimension(min_v, cross_size, 0.0)
+        if explicit and cross_base < mn:
+            cross_base = mn
+    return max(0.0, cross_base)
 
 
 def _apply_relative_offset(style, box, parent_w, parent_h):
@@ -1258,6 +1272,8 @@ def apply(node, host, parent_abs_x=0.0, parent_abs_y=0.0,
     """
     from .style import resolve_transform
 
+    if node.display_none:
+        return
     node.fiber.primitive_state["_inherited_opacity"] = node.inherited_opacity
     # 先比较 frame 签名，避免未变化节点仍调用昂贵的 GetBaseUIControl。
     color_alpha = _color_alpha(node.fiber)
@@ -1285,18 +1301,19 @@ def apply(node, host, parent_abs_x=0.0, parent_abs_y=0.0,
     applied = (draw_w, draw_h, relative_x, relative_y,
                node.inherited_opacity * color_alpha)
     previous = node.fiber.primitive_state.get("_layout_applied")
+    # Logical geometry may change without changing native geometry (Scale(0),
+    # or a compensating transform). The next visual-only commit needs it.
+    node.fiber.primitive_state["_layout_base_pos"] = (base_rx, base_ry)
+    node.fiber.primitive_state["_layout_base_size"] = (
+        node.frame_w, node.frame_h)
+    node.fiber.primitive_state["_layout_parent_scale"] = (
+        parent_scale_x, parent_scale_y)
     custom_layout = node.fiber.primitive_state.get("_has_custom_apply_layout")
     control = None
     if previous != applied or custom_layout:
         control = native.get_control(host, node.fiber.native_path)
     if control is not None:
         node.fiber.primitive_state["_native_color_alpha"] = applied[4]
-        # 始终记录布局基点与基准尺寸，供 visual-only 快速路径叠加 transform
-        node.fiber.primitive_state["_layout_base_pos"] = (base_rx, base_ry)
-        node.fiber.primitive_state["_layout_base_size"] = (
-            node.frame_w, node.frame_h)
-        node.fiber.primitive_state["_layout_parent_scale"] = (
-            parent_scale_x, parent_scale_y)
         if previous != applied:
             native.set_size(control, (draw_w, draw_h))
             # 位置：相对原生父控件（其绝对左上 = parent_abs）+ transform
@@ -1331,13 +1348,8 @@ def apply(node, host, parent_abs_x=0.0, parent_abs_y=0.0,
 
 
 def _color_alpha(fiber):
-    """取该控件 props 中 color 属性的 alpha（Color 对象），无则 1.0。"""
-    color = fiber.props.get("color") if fiber.props else None
-    if color is None:
-        color = fiber.last_props.get("color") if fiber.last_props else None
-    if isinstance(color, Color):
-        return color.a
-    return 1.0
+    from .renderer import _color_alpha as resolve_color_alpha
+    return resolve_color_alpha(fiber)
 
 
 # ---------------------------------------------------------------------------

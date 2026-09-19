@@ -6,7 +6,7 @@ from .. import native
 from ..component import Component
 from ..constants import Colors, Position
 from ..element import normalize_children
-from ..hooks import use_effect, use_ref, use_state
+from ..hooks import use_effect, use_event, use_ref, use_state
 from ..primitives import Button, Image, Panel
 from ..style import Style
 
@@ -37,6 +37,12 @@ def Modal(visible=True, style=None, onClick=None, children=None,
 
     anchor_ref = use_ref()
     measured_origin, set_measured_origin = use_state(None)
+    _size_revision, set_size_revision = use_state(0)
+
+    def on_resize(args):
+        set_size_revision(lambda value: value + 1)
+
+    use_event("ScreenSizeChangedClientEvent", on_resize, active=visible)
     mount_origin = _normalize_modal_origin(_mountPosition)
 
     def measure_origin():
