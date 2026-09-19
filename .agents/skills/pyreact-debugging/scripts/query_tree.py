@@ -76,7 +76,7 @@ def _clickable_summary(node):
     """One-line summary of a clickable node for --clickable output."""
     props = node.get("props", {}) or {}
     parts = [node.get("id", u"?"), node.get("type", u"?")]
-    key = props.get("key")
+    key = node.get("key", props.get("key"))
     if key:
         parts.append(u"key=%s" % key)
     # Prefer direct content/src/identifier. FilledButton keeps its visible text
@@ -138,7 +138,7 @@ def main():
     )
     mode.add_argument(
         "--find-key", metavar="PREFIX",
-        help="print ids of subtree nodes whose props['key'] starts with PREFIX",
+        help="print ids of subtree nodes whose key starts with PREFIX",
     )
     mode.add_argument(
         "--find-type", metavar="TYPE",
@@ -222,8 +222,8 @@ def main():
     elif args.find_key is not None:
         for node in _walk(root):
             props = node.get("props", {}) or {}
-            key = props.get("key")
-            if isinstance(key, str) and key.startswith(args.find_key):
+            key = node.get("key", props.get("key"))
+            if key is not None and str(key).startswith(args.find_key):
                 _emit(node.get("id", u"?"))
     elif args.find_type is not None:
         for node in _walk(root):

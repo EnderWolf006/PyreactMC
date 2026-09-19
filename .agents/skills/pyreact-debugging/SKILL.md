@@ -186,7 +186,7 @@ python3 simulate.py input --node-id ID --value TEXT [--timeout N] [--settle S]
 python3 simulate.py slider --node-id ID --value NUMBER [--timeout N] [--settle S]
 python3 simulate.py scroll --node-id ID [--position PIXELS] [--timeout N]
 ```
-- `--key PREFIX`：dump 树→找 `props.key` startswith PREFIX 的节点→点击（0 或 >1 匹配报错并列出）。**注意**：`key` 被 `@Component`/reconciler 存到 fiber 上，默认不出现在 dump 的 props 里（BedwarsShop 的 FilledButton 即如此），此时 `--key` 找不到目标——改用 `--label`
+- `--key PREFIX`：dump 树→按节点顶层 `key` 前缀查找→点击。Composite 的 key 会解析到其内部 Button；0 或多个匹配会报错，不会猜测目标。兼容旧快照中的 `props.key`；旧游戏端未输出 key 时请改用 `--label`。
 - `--label TEXT`：找子树 conten 包含 TEXT 的 Label，定位其可点击节点（Button 或带 onClick）点击。对 FilledButton 等复合组件（文本 Label 与内层 Button 是兄弟关系）也能正确定位
 - `input`：游戏侧调用目标 Input 的 `SetEditText`，再走正式的 `onChange` 文本 diff 分发；受控 Input 会在下一帧把新 `value` 写回 UI 树。
 - `slider`：游戏侧更新目标 Slider 的 `#slider_value` property bag 并调用 `SetSliderValue`，再走正式的 `onChange` 数值 diff 分发；原生会按 `steps` 对数值取整或裁剪，受控 Slider 会在下一帧把新 `value` 写回 UI 树。
@@ -335,7 +335,7 @@ python3 kill_game.py [--wait]
 5. **发现交互节点**：`python3 query_tree.py --clickable` 列出按钮；`python3 query_tree.py --inputs` 列出 Input；`python3 query_tree.py --sliders` 列出 Slider 及其当前受控值和步数。
 6. **模拟交互**：
    - `python3 simulate_and_diff.py click --node-id my_button`（原生 id）
-   - `python3 simulate.py click --key category_3 --settle 1`（按 props.key，稳定）+ 再 `python3 get_ui_tree.py`
+   - `python3 simulate.py click --key category_3 --settle 1`（按 Fiber key，稳定）+ 再 `python3 get_ui_tree.py`
    - `python3 simulate.py click --label 方块 --settle 1`（按显示文本）
    - `python3 simulate.py input --node-id __pyr_2 --value 测试文本 --settle 1`
    - `python3 simulate.py slider --node-id __pyr_3 --value 4 --settle 1`（设置固定格或百分比 Slider，并触发正式 `onChange`）

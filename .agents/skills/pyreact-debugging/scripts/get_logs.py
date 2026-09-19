@@ -82,8 +82,8 @@ def apply_filters(lines, grep, ignore_case, args, total):
         start = max(1, int(parts[0]))
         end = int(parts[1]) if len(parts) > 1 else total
         lines = [e for e in lines if start <= e["n"] <= end]
-    elif args.since:
-        lines = [e for e in lines if e["n"] >= max(1, args.since)]
+    elif args.since is not None:
+        lines = [e for e in lines if e["n"] > max(0, args.since)]
     elif args.head:
         lines = lines[:args.head]
     elif args.tail:
@@ -154,12 +154,12 @@ def main():
         for entry in selected:
             _write("%6d: %s" % (entry["n"], entry["text"]))
         if selected and not selected[-1]["text"].endswith("\n"):
-            _write(b"\n")
+            _write("\n")
         return
 
     # HTTP mode (incl. --follow)
     if args.follow:
-        data = fetch_logs_http(args.port, grep=args.grep, ignore_case=args.ignore_case)
+        data = probe
         seen = data["total"]
         if args.tail:
             for entry in data["lines"][-args.tail:]:
@@ -169,6 +169,8 @@ def main():
             while True:
                 time.sleep(0.5)
                 data = fetch_logs_http(args.port, since=seen, grep=args.grep, ignore_case=args.ignore_case)
+                if data is None:
+                    continue
                 for entry in data["lines"]:
                     _write("%6d: %s" % (entry["n"], entry["text"]))
                 seen = data["total"]
@@ -176,7 +178,7 @@ def main():
             _write("\n[get_logs] stopped.\n")
         return
 
-    data = fetch_logs_http(args.port, grep=args.grep, ignore_case=args.ignore_case)
+    data = probe
     total = data["total"]
     lines = apply_filters(data["lines"], None, args.ignore_case, args, total)
     if not lines:
@@ -186,7 +188,7 @@ def main():
     for entry in lines:
         _write("%6d: %s" % (entry["n"], entry["text"]))
     if lines and not lines[-1]["text"].endswith("\n"):
-        _write(b"\n")
+        _write("\n")
 
 
 if __name__ == "__main__":

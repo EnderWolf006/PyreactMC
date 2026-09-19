@@ -13,8 +13,12 @@ import sys
 
 def _flatten(node, path="", out=None):
     """Flatten a tree into {full_path: node} keyed by id path."""
+    if isinstance(node, dict) and "tree" in node:
+        node = node["tree"]
     if out is None:
         out = {}
+    if not isinstance(node, dict):
+        return out
     node_id = node.get("id", "?")
     full_path = (path + "/" + node_id) if path else node_id
     out[full_path] = node

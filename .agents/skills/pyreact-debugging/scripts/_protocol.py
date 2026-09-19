@@ -12,13 +12,14 @@ matches, discarding stale clipboard content. This replaces the old two-step
 
 import json
 import time
+import uuid
 
 from clipboard_ipc import read_clipboard, write_clipboard
 
 
 def new_seq():
-    """Return a request-unique int (millisecond timestamp mod 1e6)."""
-    return int(time.time() * 1000) % 1000000
+    """Unique across processes and restarts, without timestamp wraparound."""
+    return uuid.uuid4().int
 
 
 def request(cmd, node_id=None, value=None, timeout=5.0):

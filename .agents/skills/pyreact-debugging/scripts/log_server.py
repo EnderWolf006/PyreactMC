@@ -33,14 +33,14 @@ def _decode(data):
 def _append_line(line, log_file, ready_file):
     with _log_lock:
         _log_lines.append(line)
+        if log_file:
+            log_file.write(line)
+            log_file.flush()
     sys.stdout.write(line)
     try:
         sys.stdout.flush()
     except Exception:
         pass
-    if log_file:
-        log_file.write(line)
-        log_file.flush()
     if ready_file and _READY_SIGNAL in line:
         try:
             with open(ready_file, 'w') as rf:
@@ -78,6 +78,8 @@ def _handle_client(sock, addr, log_file, ready_file):
                         line = _decode(buf[:nl + 1])
                         buf = buf[nl + 1:]
                 _append_line(line, log_file, ready_file)
+        if buf:
+            _append_line(_decode(buf), log_file, ready_file)
     except Exception as e:
         print("[log_server] client error: %s" % e)
     finally:
@@ -168,7 +170,7 @@ def _http_server(http_port, game_dead_event, game_pid_ref):
 
             if path == '/logs':
                 import re as _re
-                since = int(qs.get('since', '0'))
+                since = max(0, int(qs.get('since', '0')))
                 grep = qs.get('grep', None)
                 if grep:
                     import urllib.parse
@@ -176,7 +178,7 @@ def _http_server(http_port, game_dead_event, game_pid_ref):
                 ignore_case = qs.get('ignore_case', '0') not in ('0', 'false', '')
                 with _log_lock:
                     total = len(_log_lines)
-                    selected = list(enumerate(_log_lines, 1))[since:]
+                    selected = list(enumerate(_log_lines[since:], since + 1))
                 if grep:
                     flags = _re.IGNORECASE if ignore_case else 0
                     pat = _re.compile(grep, flags)
