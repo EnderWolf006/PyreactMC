@@ -16,3 +16,7 @@ Thumbs.db
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
+
+# Local MCDevTool configuration and runtime output
+.mcdev.json
+.pyreact-debug/
