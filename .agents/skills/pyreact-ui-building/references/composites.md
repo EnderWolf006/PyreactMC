@@ -82,7 +82,9 @@ FilledButton 是纯色背景按钮 Composite，基于 `Button + Image` 组合。
 - `default`：默认态 `Color`，默认 `Colors.transparent`。
 - `hover`：悬停态 `Color`。未传时使用 `default.lighten(0.2)`。
 - `pressed`：按下态 `Color`。未传时使用 `default.darken(0.2)`。
-- `key`、`ref`、`style`、`children`、`onClick`：原样透传给内部 `Button`。
+- `style`、`children`、`onClick`：原样透传给内部 `Button`。
+- `key`：用于外层 Composite 的复用。`@Component` 会截取 `ref`，当前没有自动
+  转发到内部控件；需要原生引用时请直接使用 `Button(ref=...)`。
 - 其他 props：通过 `**kwargs` 原样透传给内部 `Button`。
 
 ## Modal
@@ -90,7 +92,8 @@ FilledButton 是纯色背景按钮 Composite，基于 `Button + Image` 组合。
 Modal 是类似 React Native Modal 的全屏模态层 Composite，基于
 `Panel + Button` 组合。它通过 ModSDK `GetScreenSize()` 获取完整屏幕尺寸，
 不使用安全区尺寸。底层透明 `Button` 会吞噬点击，避免事件穿透到模态层下方；
-传入 `onClick` 后可用于点击内容外侧关闭。
+传入 `onClick` 后可用于点击内容外侧关闭。可见期间监听窗口尺寸变化，重新获取
+屏幕尺寸并测量挂载位置。
 
 - `visible`：是否渲染模态层，默认 `True`。
 - `style`：模态根 `Panel` 的 `Style`，可设置 `opacity`、`zIndex` 等；全屏
@@ -130,7 +133,7 @@ SafeArea 是类似 React Native `SafeAreaView` 的异形屏安全区容器 Compo
 inset，嵌套 SafeArea 因此不会重复 padding。部分越过安全矩形边界时只应用实际
 重叠的部分。
 
-探针尚未完成首次布局时先按零 inset 渲染；测量完成后 `SafeArea` 会自动刷新。
+探针尚未完成首次布局时先按零 inset 渲染；测量完成及窗口变化后 `SafeArea` 会自动刷新。
 inset 使用 JsonUI 设计坐标，不是设备物理像素。
 
 ## Dropdown

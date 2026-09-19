@@ -83,10 +83,9 @@ if safe_area_size is not None and safe_area_insets is not None:
     left = safe_area_insets.left
 ```
 
-UI 尚未完成布局时返回 `None`。运行时会持续等待首次有效布局，测量成功后即固定
-使用该结果，不再因 PC 窗口尺寸变化或 UI 重新初始化重复测量。移动端安全区在
-运行期间不会变化，PC 安全区恒为零。inset 与 Pyreact 布局使用相同的 JsonUI
-坐标系，不是物理像素。
+UI 尚未完成布局时返回 `None`。运行时缓存有效测量，并在
+`ScreenSizeChangedClientEvent` 后由探针下一帧重新测量、通知已挂载的 `SafeArea`。
+inset 与 Pyreact 布局使用相同的 JsonUI 坐标系，不是物理像素。
 
 业务组件通常直接使用 `SafeArea`，不需要手动读取 inset：
 
@@ -99,4 +98,4 @@ SafeArea(
 
 `SafeArea` 会按自身绝对 frame 只加入仍被系统不安全区域覆盖的 padding，并与
 `style` 中已有的 padding 相加；已位于安全矩形内的非根节点以及嵌套
-`SafeArea` 不会重复缩进。首次异步测量完成后会自动重渲染。
+`SafeArea` 不会重复缩进。首次异步测量完成及窗口变化后会自动重渲染。
