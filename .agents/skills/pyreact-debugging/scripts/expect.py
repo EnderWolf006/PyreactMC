@@ -21,12 +21,7 @@ import json
 import os
 import sys
 
-try:
-    from get_ui_tree import _default_output
-except Exception:
-    def _default_output():
-        d = os.path.join(os.environ.get("TEMP") or "/tmp", "pyreact-debug")
-        return os.path.join(d, "ui_tree.json")
+from _session import default_tree_path as _default_output
 
 
 def _load(path):
@@ -39,7 +34,7 @@ def _load(path):
     except Exception as e:
         print("[expect] FAIL: cannot parse tree: %s" % e, file=sys.stderr)
         sys.exit(1)
-    # The saved file is the raw clipboard-protocol response
+    # The saved file is the Pyreact response envelope
     # {pyreact_ack, seq, tree, error}; unwrap the actual tree (same convention
     # as query_tree.py / print_ui_tree.py).
     return raw.get("tree", raw)

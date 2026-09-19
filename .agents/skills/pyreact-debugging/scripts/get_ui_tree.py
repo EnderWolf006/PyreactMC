@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trigger in-game UI tree dump via clipboard, then read and print/save the result.
+Trigger in-game UI tree dump via MCDevTool, then read and print/save the result.
 
 Usage:
     python3 get_ui_tree.py [--node-id NODE_ID] [--output FILE]
@@ -18,17 +18,15 @@ import tempfile
 
 from _protocol import request
 from print_ui_tree import print_tree
+from _session import default_tree_path
 
 
 def _default_output():
-    d = os.path.join(tempfile.gettempdir(), 'pyreact-debug')
-    if not os.path.isdir(d):
-        os.makedirs(d)
-    return os.path.join(d, 'ui_tree.json')
+    return default_tree_path()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Get Pyreact UI tree from game via clipboard")
+    parser = argparse.ArgumentParser(description="Get Pyreact UI tree from game via MCDevTool")
     parser.add_argument("--node-id", default=None, help="dump subtree rooted at NODE_ID")
     parser.add_argument("--output", default=None)
     parser.add_argument("--timeout", type=float, default=5.0)

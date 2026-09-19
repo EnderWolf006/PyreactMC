@@ -6,10 +6,13 @@ from __future__ import print_function
 import argparse
 import ctypes
 from ctypes import wintypes
+import json
 import sys
 import time
 
-from capture_screen import (
+from _session import desktop_lock, load_session, registry_dir
+
+from _window import (
     RECT,
     SW_RESTORE,
     _activate_window,
@@ -48,27 +51,29 @@ class MONITORINFO(ctypes.Structure):
 
 
 LONG_PTR = ctypes.c_longlong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_long
-get_window_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
-get_window_long.argtypes = [wintypes.HWND, ctypes.c_int]
-get_window_long.restype = LONG_PTR
+get_window_long = None
+if user32 is not None:
+    get_window_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+    get_window_long.argtypes = [wintypes.HWND, ctypes.c_int]
+    get_window_long.restype = LONG_PTR
 
-user32.GetMenu.argtypes = [wintypes.HWND]
-user32.GetMenu.restype = wintypes.HMENU
-user32.IsZoomed.argtypes = [wintypes.HWND]
-user32.IsZoomed.restype = wintypes.BOOL
-user32.AdjustWindowRectEx.argtypes = [
-    ctypes.POINTER(RECT), wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
-]
-user32.AdjustWindowRectEx.restype = wintypes.BOOL
-user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
-user32.MonitorFromWindow.restype = wintypes.HANDLE
-user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
-user32.GetMonitorInfoW.restype = wintypes.BOOL
-user32.SetWindowPos.argtypes = [
-    wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
-    ctypes.c_int, ctypes.c_int, wintypes.UINT,
-]
-user32.SetWindowPos.restype = wintypes.BOOL
+    user32.GetMenu.argtypes = [wintypes.HWND]
+    user32.GetMenu.restype = wintypes.HMENU
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.IsZoomed.restype = wintypes.BOOL
+    user32.AdjustWindowRectEx.argtypes = [
+        ctypes.POINTER(RECT), wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
+    ]
+    user32.AdjustWindowRectEx.restype = wintypes.BOOL
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.MonitorFromWindow.restype = wintypes.HANDLE
+    user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
+    user32.GetMonitorInfoW.restype = wintypes.BOOL
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
 
 
 def _parse_size(value):
@@ -218,8 +223,8 @@ def main():
     parser.add_argument("--pid", type=int, default=None, help="game process id")
     parser.add_argument("--title", default=None, help="window title substring")
     parser.add_argument(
-        "--process-name", default="Minecraft.Windows.exe",
-        help="game executable name (default: Minecraft.Windows.exe)",
+        "--process-name", default=None,
+        help="filter executable name (unbound default: Minecraft.Windows.exe)",
     )
     parser.add_argument(
         "--no-center", action="store_true",
@@ -239,7 +244,7 @@ def main():
     )
     parser.add_argument(
         "--list-windows", action="store_true",
-        help="list visible top-level windows and exit",
+        help="list visible windows (assigned game only when session-bound)",
     )
     args = parser.parse_args()
 
@@ -253,59 +258,76 @@ def main():
                    "presets": _preset_payload()})
             return 0
 
-        windows = _list_windows()
+        if user32 is None:
+            raise RuntimeError("Window resizing requires Windows")
         if args.list_windows:
+            binding = load_session(live=True)
+            windows = _list_windows()
+            if binding:
+                windows = [item for item in windows if item["pid"] == binding["game_pid"]]
             _emit({"ok": True, "windows": windows})
             return 0
         if not args.preset and not args.size:
             raise ValueError("pass --preset or --size")
         if args.height <= 0:
             raise ValueError("--height must be positive")
+        if not 0 <= args.settle <= 30:
+            raise ValueError("--settle must be between 0 and 30 seconds")
 
         requested_width, requested_height = (
             _preset_size(args.preset, args.height)
             if args.preset else args.size
         )
-        window = _find_game_window(
-            windows, pid=args.pid, title=args.title,
-            process_name=args.process_name,
-        )
-        if not window:
-            raise RuntimeError(
-                "Minecraft window not found; use --list-windows, --pid, or --title"
-            )
-
-        outer = _resize_window(
-            window["hwnd"], requested_width, requested_height,
-            center=not args.no_center,
-        )
-        activated = None
-        if not args.no_activate:
-            activated = _activate_window(window["hwnd"])
-        if args.settle > 0:
-            time.sleep(args.settle)
-
-        client_x, client_y, actual_width, actual_height = _window_rect(window["hwnd"])
-        matches = (
-            actual_width == requested_width and actual_height == requested_height
-        )
-        payload = {
-            "ok": matches,
-            "preset": args.preset,
-            "requestedClient": [requested_width, requested_height],
-            "actualClient": [actual_width, actual_height],
-            "clientOrigin": [client_x, client_y],
-            "outerWindow": outer,
-            "activated": activated,
-            "window": window,
-        }
-        if not matches:
-            payload["error"] = "actual client size does not match requested size"
+        payload = resize_owned(args, requested_width, requested_height)
         _emit(payload)
-        return 0 if matches else 2
+        return 0 if payload["ok"] else 2
     except Exception as exc:
         _emit({"ok": False, "error": str(exc)})
         return 1
+
+
+def select_window(windows, args, binding):
+    pid = args.pid
+    if binding:
+        if pid is not None and pid != binding["game_pid"]:
+            raise ValueError("--pid conflicts with the assigned game instance")
+        pid = binding["game_pid"]
+        owned = [item for item in windows if item["pid"] == pid]
+        if args.title and not any(args.title.lower() in item["title"].lower() for item in owned):
+            raise ValueError("--title conflicts with the assigned game instance")
+        if args.process_name and not any(args.process_name.lower() == item["process"].lower() for item in owned):
+            raise ValueError("--process-name conflicts with the assigned game instance")
+    process_name = args.process_name or (None if binding else "Minecraft.Windows.exe")
+    window = _find_game_window(windows, pid=pid, title=args.title, process_name=process_name)
+    if not window:
+        raise RuntimeError("Assigned Minecraft window not found; inspect --list-windows")
+    return window
+
+
+def resize_owned(args, requested_width, requested_height):
+    # Input may still be queued after a timed-out MCP request releases its lock.
+    # The global lease outlives that request, so check it under the same lock.
+    with desktop_lock():
+        lease = registry_dir() / "desktop-lease.json"
+        if lease.exists() and json.loads(lease.read_text(encoding="utf-8")).get("until", 0) > time.time():
+            raise RuntimeError("Desktop input still reserved after an uncertain call; retry later")
+        binding = load_session(live=True)
+        window = select_window(_list_windows(), args, binding)
+        if binding:
+            load_session(live=True)
+        outer = _resize_window(window["hwnd"], requested_width, requested_height, center=not args.no_center)
+        activated = None if args.no_activate else _activate_window(window["hwnd"])
+        if args.settle > 0:
+            time.sleep(args.settle)
+        client_x, client_y, actual_width, actual_height = _window_rect(window["hwnd"])
+        matches = actual_width == requested_width and actual_height == requested_height
+        payload = {"ok": matches, "preset": args.preset,
+                   "requestedClient": [requested_width, requested_height],
+                   "actualClient": [actual_width, actual_height], "clientOrigin": [client_x, client_y],
+                   "outerWindow": outer, "activated": activated, "window": window}
+        if not matches:
+            payload["error"] = "actual client size does not match requested size"
+        return payload
 
 
 if __name__ == "__main__":

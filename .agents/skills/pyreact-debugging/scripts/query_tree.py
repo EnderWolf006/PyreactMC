@@ -166,9 +166,8 @@ def main():
     )
     args = parser.parse_args()
 
-    path = args.file or os.path.join(
-        tempfile.gettempdir(), "pyreact-debug", "ui_tree.json"
-    )
+    from _session import default_tree_path
+    path = args.file or default_tree_path()
 
     if not os.path.isfile(path):
         print("[query_tree] ERROR: file not found: %s" % path, file=sys.stderr)

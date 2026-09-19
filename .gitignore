@@ -20,3 +20,6 @@ Thumbs.db
 # Local MCDevTool configuration and runtime output
 .mcdev.json
 .pyreact-debug/
+
+# Maintainer-only verification; not part of the distributed skill
+/tests/tooling/

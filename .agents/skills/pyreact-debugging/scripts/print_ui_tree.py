@@ -106,7 +106,8 @@ def main():
     parser.add_argument("--json", action="store_true", help="output raw JSON instead of tree")
     args = parser.parse_args()
 
-    path = args.file or os.path.join(tempfile.gettempdir(), "pyreact-debug", "ui_tree.json")
+    from _session import default_tree_path
+    path = args.file or default_tree_path()
     with open(path, "rb") as f:
         data = json.loads(f.read().decode("utf-8"))
     print_tree(data, node_id=args.node_id, depth=args.depth, as_json=args.json)

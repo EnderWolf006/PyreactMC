@@ -104,7 +104,8 @@ def main():
         action_resp = request("click", node_id=node_id, timeout=args.timeout)
     action_ms = (now() - action_started) * 1000.0
     if action_resp is None:
-        print("[simulate_and_diff] WARNING: action response not received within %.1fs" % args.timeout, file=sys.stderr)
+        print("[simulate_and_diff] ERROR: action outcome unknown; not replaying", file=sys.stderr)
+        sys.exit(1)
     elif action_resp.get("error"):
         print("[simulate_and_diff] ERROR: %s" % action_resp["error"], file=sys.stderr)
         sys.exit(1)

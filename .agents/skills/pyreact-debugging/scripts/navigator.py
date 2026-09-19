@@ -10,7 +10,7 @@ from _protocol import request
 def _add_timeout(parser):
     parser.add_argument(
         "--timeout", type=float, default=5.0,
-        help="seconds to wait for the clipboard response (default: 5)",
+        help="seconds to wait for the MCDevTool response (default: 5)",
     )
 
 

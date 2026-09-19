@@ -209,7 +209,7 @@ def _scroll(node_id, position, timeout):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulate Pyreact UI interaction via clipboard")
+    parser = argparse.ArgumentParser(description="Simulate Pyreact UI interaction via MCDevTool")
     parser.add_argument("action", choices=["click", "input", "slider", "scroll"],
                         help="interaction type")
     target = parser.add_mutually_exclusive_group(required=True)
